@@ -101,30 +101,7 @@ Content-Type: application/json
   "disclaimer": "Portfolio demo and underwriting support only. This is not a credit approval, decline, or adverse action decision."
 }`;
 
-  const curlExample = `curl -X POST https://YOUR-VERCEL-URL.vercel.app/api/underwrite \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "business_name": "Riverside Coffee Roasters",
-    "industry": "Restaurant",
-    "opening_balance": 15000,
-    "analysis_period_months": 6,
-    "transactions": [
-      {
-        "date": "2025-01-03",
-        "description": "Customer deposits",
-        "amount": 42000,
-        "type": "credit",
-        "category": "revenue"
-      },
-      {
-        "date": "2025-01-15",
-        "description": "Business loan repayment",
-        "amount": -3500,
-        "type": "debit",
-        "category": "debt_payment"
-      }
-    ]
-  }'`;
+  const curlExample = `curl.exe -X POST "https://smb-credit-signal-with-j90ab2ttt-subha-ss-projects-04b497d2.vercel.app/api/underwrite" -H "Content-Type: application/json" --data-binary "@examples/sample-underwrite-request.json"`;
 
   return (
     <div className="flex-1 overflow-auto">
