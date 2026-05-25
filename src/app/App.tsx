@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router';
 import { LandingPage } from './components/LandingPage';
 import { ConnectPage } from './components/ConnectPage';
 import { Dashboard } from './components/Dashboard';
+import { DemoPage } from './components/DemoPage';
+import { UploadPage } from './components/UploadPage';
 import { ApiDocs } from './components/ApiDocs';
 import { Report } from './components/Report';
 import { BarChart3 } from 'lucide-react';
@@ -21,10 +23,16 @@ function Navigation() {
         </Link>
         <div className="flex items-center gap-6">
           <Link
-            to="/dashboard"
+            to="/demo"
             className="text-sm hover:text-foreground transition-colors text-muted-foreground"
           >
-            Demo Dashboard
+            Demo Companies
+          </Link>
+          <Link
+            to="/upload"
+            className="text-sm hover:text-foreground transition-colors text-muted-foreground"
+          >
+            Upload Data
           </Link>
           <Link
             to="/api-docs"
@@ -52,7 +60,10 @@ export default function App() {
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/connect" element={<ConnectPage />} />
+          <Route path="/demo" element={<DemoPage />} />
+          <Route path="/upload" element={<UploadPage />} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/result" element={<Dashboard />} />
           <Route path="/api-docs" element={<ApiDocs />} />
           <Route path="/report" element={<Report />} />
         </Routes>

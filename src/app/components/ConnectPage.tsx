@@ -15,7 +15,7 @@ export function ConnectPage() {
         <div className="grid md:grid-cols-3 gap-6">
           {/* Demo Company Option */}
           <Link
-            to="/dashboard"
+            to="/demo"
             className="bg-card border-2 border-primary rounded-xl p-8 hover:shadow-lg transition-all group"
           >
             <div className="bg-primary/10 w-14 h-14 rounded-lg flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
@@ -52,7 +52,10 @@ export function ConnectPage() {
           </div>
 
           {/* Upload Transactions Option */}
-          <div className="bg-card border border-border rounded-xl p-8 hover:shadow-lg transition-all opacity-75">
+          <Link
+            to="/upload"
+            className="bg-card border border-border rounded-xl p-8 hover:shadow-lg transition-all group"
+          >
             <div className="bg-secondary w-14 h-14 rounded-lg flex items-center justify-center mb-4">
               <Upload className="w-7 h-7" />
             </div>
@@ -60,13 +63,14 @@ export function ConnectPage() {
             <p className="text-sm text-muted-foreground mb-4">
               Import transaction data from CSV or Excel file format
             </p>
-            <div className="bg-muted px-3 py-1 rounded-full text-xs inline-block">
-              Sandbox mode
+            <div className="bg-primary/5 px-3 py-1 rounded-full text-xs inline-block">
+              CSV or JSON
             </div>
-            <div className="mt-6 text-sm text-muted-foreground">
-              Available in production
+            <div className="mt-6 flex items-center gap-2 text-primary text-sm">
+              Upload file
+              <ArrowRight className="w-4 h-4" />
             </div>
-          </div>
+          </Link>
         </div>
 
         <div className="mt-12 bg-muted/50 rounded-lg p-6 text-center">

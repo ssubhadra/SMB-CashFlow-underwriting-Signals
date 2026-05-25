@@ -1,0 +1,50 @@
+{
+  "business_name": "Bright Chair Salon",
+  "industry": "Personal Services",
+  "opening_balance": 9000,
+  "analysis_period_months": 6,
+  "transactions": [
+    {
+      "date": "2025-01-04",
+      "description": "Card deposits",
+      "amount": 24500,
+      "type": "credit",
+      "category": "revenue"
+    },
+    {
+      "date": "2025-01-07",
+      "description": "Payroll",
+      "amount": -9800,
+      "type": "debit",
+      "category": "payroll"
+    },
+    {
+      "date": "2025-01-10",
+      "description": "Rent",
+      "amount": -3600,
+      "type": "debit",
+      "category": "rent"
+    },
+    {
+      "date": "2025-02-04",
+      "description": "Card deposits",
+      "amount": 26200,
+      "type": "credit",
+      "category": "revenue"
+    },
+    {
+      "date": "2025-02-07",
+      "description": "Payroll",
+      "amount": -10100,
+      "type": "debit",
+      "category": "payroll"
+    },
+    {
+      "date": "2025-02-15",
+      "description": "Equipment loan repayment",
+      "amount": -1800,
+      "type": "debit",
+      "category": "debt_payment"
+    }
+  ]
+}

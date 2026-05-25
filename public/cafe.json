@@ -1,0 +1,57 @@
+{
+  "business_name": "Riverside Coffee Roasters",
+  "industry": "Restaurant",
+  "opening_balance": 15000,
+  "analysis_period_months": 6,
+  "transactions": [
+    {
+      "date": "2025-01-03",
+      "description": "Customer deposits",
+      "amount": 42000,
+      "type": "credit",
+      "category": "revenue"
+    },
+    {
+      "date": "2025-01-08",
+      "description": "Payroll",
+      "amount": -12000,
+      "type": "debit",
+      "category": "payroll"
+    },
+    {
+      "date": "2025-01-12",
+      "description": "Rent payment",
+      "amount": -4500,
+      "type": "debit",
+      "category": "rent"
+    },
+    {
+      "date": "2025-01-15",
+      "description": "Business loan repayment",
+      "amount": -3500,
+      "type": "debit",
+      "category": "debt_payment"
+    },
+    {
+      "date": "2025-02-03",
+      "description": "Customer deposits",
+      "amount": 39000,
+      "type": "credit",
+      "category": "revenue"
+    },
+    {
+      "date": "2025-02-08",
+      "description": "Payroll",
+      "amount": -12300,
+      "type": "debit",
+      "category": "payroll"
+    },
+    {
+      "date": "2025-02-15",
+      "description": "Business loan repayment",
+      "amount": -3500,
+      "type": "debit",
+      "category": "debt_payment"
+    }
+  ]
+}

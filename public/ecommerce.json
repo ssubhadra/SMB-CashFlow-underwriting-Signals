@@ -1,0 +1,50 @@
+{
+  "business_name": "Northstar Online Goods",
+  "industry": "E-Commerce",
+  "opening_balance": 22000,
+  "analysis_period_months": 6,
+  "transactions": [
+    {
+      "date": "2025-01-02",
+      "description": "Marketplace deposits",
+      "amount": 68000,
+      "type": "credit",
+      "category": "revenue"
+    },
+    {
+      "date": "2025-01-06",
+      "description": "Inventory purchase",
+      "amount": -31000,
+      "type": "debit",
+      "category": "inventory"
+    },
+    {
+      "date": "2025-01-14",
+      "description": "Shipping vendor",
+      "amount": -8500,
+      "type": "debit",
+      "category": "shipping"
+    },
+    {
+      "date": "2025-02-02",
+      "description": "Marketplace deposits",
+      "amount": 73500,
+      "type": "credit",
+      "category": "revenue"
+    },
+    {
+      "date": "2025-02-06",
+      "description": "Inventory purchase",
+      "amount": -35500,
+      "type": "debit",
+      "category": "inventory"
+    },
+    {
+      "date": "2025-02-15",
+      "description": "Working capital loan repayment",
+      "amount": -5200,
+      "type": "debit",
+      "category": "debt_payment"
+    }
+  ]
+}

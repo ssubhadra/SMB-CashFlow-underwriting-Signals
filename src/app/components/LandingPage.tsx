@@ -25,17 +25,17 @@ export function LandingPage() {
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
           <Link
-            to="/dashboard"
+            to="/demo"
             className="bg-primary text-primary-foreground px-8 py-4 rounded-lg hover:opacity-90 transition-opacity flex items-center gap-2"
           >
-            View demo dashboard
+            Try demo companies
             <ArrowRight className="w-5 h-5" />
           </Link>
           <Link
-            to="/api-docs"
+            to="/upload"
             className="bg-secondary text-secondary-foreground px-8 py-4 rounded-lg hover:bg-secondary/80 transition-colors flex items-center gap-2"
           >
-            See API docs
+            Upload CSV or JSON
             <FileText className="w-5 h-5" />
           </Link>
         </div>
@@ -125,7 +125,7 @@ export function LandingPage() {
             See how CashFlow AI can help you make faster, more confident lending decisions
           </p>
           <Link
-            to="/connect"
+            to="/demo"
             className="bg-primary text-primary-foreground px-8 py-4 rounded-lg hover:opacity-90 transition-opacity inline-flex items-center gap-2"
           >
             Get started

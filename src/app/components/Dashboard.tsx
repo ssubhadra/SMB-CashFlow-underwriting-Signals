@@ -1,7 +1,297 @@
-import { Link } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, DollarSign, Activity, CreditCard, AlertCircle, FileText, Download, Info } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell } from 'recharts';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import sampleRequest from '../../../examples/sample-underwrite-request.json';
+import { underwrite } from '../../lib/underwrite';
+import { Badge } from './ui/badge';
+import { Button } from './ui/button';
+
+type UnderwriteResponse = {
+  status: string;
+  business: {
+    name: string;
+    industry: string;
+    months_analyzed: number;
+  };
+  analysis: {
+    risk_score: number;
+    risk_level: string;
+    analyst_review_required: boolean;
+    recommended_loan_amount: number;
+    recommended_collection_window: string;
+    metrics: {
+      average_monthly_deposits: number;
+      average_monthly_outflows: number;
+      average_balance: number;
+      monthly_net_cash_flow: number;
+      cash_flow_volatility_ratio: number;
+      cash_flow_volatility: string;
+      overdraft_count: number;
+      low_balance_days: number;
+      monthly_debt_payments: number;
+      debt_to_deposit_ratio: number;
+      estimated_weeks_of_liquidity: number;
+    };
+    ai_explanation:
+      | string
+      | {
+          summary?: string;
+          top_drivers?: string[];
+        };
+    explanation_source: string;
+  };
+  disclaimer: string;
+};
+
+type Transaction = {
+  date: string;
+  description?: string;
+  amount: number;
+  type?: 'credit' | 'debit';
+  category?: string;
+  balance?: number;
+};
+
+type UnderwritePayload = {
+  business_name?: string;
+  industry?: string;
+  opening_balance?: number;
+  analysis_period_months?: number;
+  transactions: Transaction[];
+};
+
+type DecisionStatus = 'approved' | 'needs_info' | null;
+type DashboardLocationState =
+  | UnderwriteResponse
+  | UnderwriteResponse['analysis']
+  | {
+      result?: UnderwriteResponse;
+      payload?: UnderwritePayload;
+      analysis?: UnderwriteResponse['analysis'];
+      business?: UnderwriteResponse['business'];
+      status?: string;
+      disclaimer?: string;
+    }
+  | null;
+
+function getInitialResult(state: DashboardLocationState): UnderwriteResponse | null {
+  if (!state || typeof state !== 'object') return null;
+
+  if ('result' in state && state.result?.analysis) {
+    return state.result;
+  }
+
+  if ('analysis' in state && state.analysis?.metrics) {
+    return {
+      status: state.status ?? 'success',
+      business: state.business ?? {
+        name: 'Analyzed Business',
+        industry: 'Unknown',
+        months_analyzed: 0,
+      },
+      analysis: state.analysis,
+      disclaimer: state.disclaimer ?? '',
+    };
+  }
+
+  if ('metrics' in state) {
+    return {
+      status: 'success',
+      business: {
+        name: 'Analyzed Business',
+        industry: 'Unknown',
+        months_analyzed: 0,
+      },
+      analysis: state,
+      disclaimer: '',
+    };
+  }
+
+  return null;
+}
+
+function getInitialPayload(state: DashboardLocationState): UnderwritePayload | null {
+  if (!state || typeof state !== 'object') return null;
+  if ('payload' in state && state.payload?.transactions) return state.payload;
+  return null;
+}
+
+function formatCurrency(value: number) {
+  return `$${Math.round(value).toLocaleString()}`;
+}
+
+function getRiskClassName(riskLevel: string) {
+  if (riskLevel === 'High') return 'text-red-600';
+  if (riskLevel === 'Low') return 'text-green-600';
+  return 'text-amber-600';
+}
+
+function normalizeAmount(tx: Transaction) {
+  if (tx.type === 'credit') return Math.abs(tx.amount);
+  if (tx.type === 'debit') return -Math.abs(tx.amount);
+  return tx.amount;
+}
+
+function getMonthLabel(date: string) {
+  const parsed = new Date(`${date.slice(0, 7)}-01T00:00:00`);
+  return parsed.toLocaleString('en-US', { month: 'short' });
+}
+
+function isDebtTransaction(tx: Transaction) {
+  const text = `${tx.description ?? ''} ${tx.category ?? ''}`.toLowerCase();
+  return (
+    text.includes('loan') ||
+    text.includes('debt') ||
+    text.includes('mca') ||
+    text.includes('financing') ||
+    text.includes('credit card') ||
+    text.includes('repayment')
+  );
+}
+
+function toCategoryLabel(value: string) {
+  return value
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function buildMonthlyRevenueData(payload: UnderwritePayload | null) {
+  if (!payload?.transactions.length) return monthlyRevenue;
+
+  const months = new Map<string, { month: string; revenue: number; expenses: number }>();
+
+  for (const tx of payload.transactions) {
+    if (!tx.date || typeof tx.amount !== 'number') continue;
+    const key = tx.date.slice(0, 7);
+    const amount = normalizeAmount(tx);
+    const row = months.get(key) ?? { month: getMonthLabel(tx.date), revenue: 0, expenses: 0 };
+
+    if (amount >= 0) row.revenue += amount;
+    if (amount < 0) row.expenses += amount;
+    months.set(key, row);
+  }
+
+  return [...months.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([, row]) => row);
+}
+
+function buildBalanceData(payload: UnderwritePayload | null) {
+  if (!payload?.transactions.length) return balanceData;
+
+  let runningBalance = payload.opening_balance ?? 0;
+  const balances = new Map<string, { month: string; total: number; count: number }>();
+
+  for (const tx of [...payload.transactions].sort((a, b) => a.date.localeCompare(b.date))) {
+    if (!tx.date || typeof tx.amount !== 'number') continue;
+    runningBalance = tx.balance ?? runningBalance + normalizeAmount(tx);
+    const key = tx.date.slice(0, 7);
+    const row = balances.get(key) ?? { month: getMonthLabel(tx.date), total: 0, count: 0 };
+    row.total += runningBalance;
+    row.count += 1;
+    balances.set(key, row);
+  }
+
+  return [...balances.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([, row]) => ({
+      month: row.month,
+      balance: Math.round(row.total / row.count),
+    }));
+}
+
+function buildExpenseRows(payload: UnderwritePayload | null, monthsAnalyzed: number) {
+  if (!payload?.transactions.length) {
+    return [
+      { label: 'Payroll', amount: 28500 },
+      { label: 'Rent & Utilities', amount: 4200 },
+      { label: 'Software & Subscriptions', amount: 1800 },
+      { label: 'Insurance', amount: 950 },
+    ];
+  }
+
+  const totals = new Map<string, number>();
+
+  for (const tx of payload.transactions) {
+    const amount = normalizeAmount(tx);
+    if (amount >= 0 || isDebtTransaction(tx)) continue;
+    const category = tx.category ? toCategoryLabel(tx.category) : 'Uncategorized';
+    totals.set(category, (totals.get(category) ?? 0) + Math.abs(amount));
+  }
+
+  return [...totals.entries()]
+    .map(([label, total]) => ({ label, amount: Math.round(total / Math.max(monthsAnalyzed, 1)) }))
+    .sort((left, right) => right.amount - left.amount)
+    .slice(0, 4);
+}
+
+function buildDebtRows(payload: UnderwritePayload | null, monthsAnalyzed: number) {
+  if (!payload?.transactions.length) {
+    return [
+      { label: 'Business Line of Credit', amount: 850 },
+      { label: 'Equipment Loan', amount: 1200 },
+    ];
+  }
+
+  const totals = new Map<string, number>();
+
+  for (const tx of payload.transactions) {
+    const amount = normalizeAmount(tx);
+    if (amount >= 0 || !isDebtTransaction(tx)) continue;
+    const label = tx.description || tx.category || 'Debt Payment';
+    totals.set(label, (totals.get(label) ?? 0) + Math.abs(amount));
+  }
+
+  return [...totals.entries()]
+    .map(([label, total]) => ({ label, amount: Math.round(total / Math.max(monthsAnalyzed, 1)) }))
+    .sort((left, right) => right.amount - left.amount);
+}
+
+function getAiSummary(
+  aiExplanation: UnderwriteResponse['analysis']['ai_explanation'] | undefined
+) {
+  if (!aiExplanation) {
+    return {
+      summary: 'Run analysis to generate a live risk summary.',
+      topDrivers: [],
+    };
+  }
+
+  if (typeof aiExplanation === 'string') {
+    return {
+      summary: aiExplanation,
+      topDrivers: [
+        'Average monthly deposits',
+        'Cash-flow volatility',
+        'Debt-to-deposit ratio',
+        'Liquidity and overdraft signals',
+      ],
+    };
+  }
+
+  return {
+    summary: aiExplanation.summary ?? 'No summary returned.',
+    topDrivers: aiExplanation.top_drivers ?? [],
+  };
+}
+
+function StatCard({
+  label,
+  value,
+  className = '',
+}: {
+  label: string;
+  value: string | number;
+  className?: string;
+}) {
+  return (
+    <div className="bg-card border border-border rounded-lg p-6">
+      <div className="text-sm text-muted-foreground mb-2">{label}</div>
+      <div className={`text-2xl mb-1 ${className}`}>{value}</div>
+    </div>
+  );
+}
 
 // Demo data - converted to diverging format for 2-sided bars
 const monthlyRevenue = [
@@ -58,8 +348,84 @@ function MetricTooltip({ calculation, children }: { calculation: string; childre
 }
 
 export function Dashboard() {
+  const location = useLocation();
+  const initialResult = getInitialResult(location.state as DashboardLocationState);
+  const initialPayload = getInitialPayload(location.state as DashboardLocationState);
   const riskScore = 73; // Out of 100
   const recommendedLoan = 85000;
+  const [analysisResult, setAnalysisResult] = useState<UnderwriteResponse | null>(initialResult);
+  const [analysisPayload, setAnalysisPayload] = useState<UnderwritePayload | null>(initialPayload);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [isRunningAnalysis, setIsRunningAnalysis] = useState(false);
+  const [status, setStatus] = useState<DecisionStatus>(null);
+  const isRunningRef = useRef(false);
+
+  const analysis = analysisResult?.analysis;
+  const monthsAnalyzed = analysisResult?.business.months_analyzed ?? analysisPayload?.analysis_period_months ?? 12;
+  const businessName = analysisResult?.business.name ?? analysisPayload?.business_name ?? 'Riverside Coffee Roasters';
+  const businessSubtitle = analysisResult
+    ? `${businessName} - ${monthsAnalyzed} month analysis`
+    : 'Riverside Coffee Roasters - Last 12 months';
+  const chartMonthlyRevenue = buildMonthlyRevenueData(analysisPayload);
+  const chartBalanceData = buildBalanceData(analysisPayload);
+  const recurringExpenseRows = buildExpenseRows(analysisPayload, monthsAnalyzed);
+  const debtRows = buildDebtRows(analysisPayload, monthsAnalyzed);
+  const totalFixedCosts = recurringExpenseRows.reduce((sum, row) => sum + row.amount, 0);
+  const displayedRiskScore = analysisResult?.analysis.risk_score ?? riskScore;
+  const displayedLoanAmount = analysisResult?.analysis.recommended_loan_amount ?? recommendedLoan;
+  const displayedRiskLevel = analysisResult?.analysis.risk_level ?? 'Low-to-moderate';
+  const aiSummary = getAiSummary(analysis?.ai_explanation);
+  const displayedExplanation =
+    aiSummary.summary ??
+    'Riverside Coffee Roasters shows strong upward cash flow momentum with consistent revenue growth over the past 6 months. Average monthly balance has increased 160% since July. Only 1 overdraft incident detected in 12 months. Debt-to-revenue ratio of 8% is well within safe parameters. The business demonstrates seasonal strength in Q4 with reliable recovery patterns.';
+
+  const handleRunAnalysis = async () => {
+    if (isRunningRef.current) return;
+
+    const payload = analysisPayload ?? sampleRequest;
+    isRunningRef.current = true;
+    setIsRunningAnalysis(true);
+    setAnalysisError(null);
+    setStatus(null);
+
+    try {
+      const result = await underwrite(payload);
+      setAnalysisResult(result);
+      setAnalysisPayload(payload);
+    } catch (error) {
+      setAnalysisError(error instanceof Error ? error.message : 'Unable to run analysis.');
+    } finally {
+      isRunningRef.current = false;
+      setIsRunningAnalysis(false);
+    }
+  };
+
+  if (location.pathname === '/result' && !analysisResult && !analysisError && !isRunningAnalysis) {
+    return (
+      <div className="flex-1 overflow-auto bg-muted/30">
+        <div className="max-w-3xl mx-auto px-6 py-20 text-center">
+          <h1 className="text-3xl mb-3">No analysis yet</h1>
+          <p className="text-muted-foreground mb-6">
+            Choose a demo company or upload a CSV/JSON file to generate underwriting results.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <Link
+              to="/demo"
+              className="bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:opacity-90 transition-opacity text-sm"
+            >
+              Try demo companies
+            </Link>
+            <Link
+              to="/upload"
+              className="bg-card border border-border px-4 py-2 rounded-lg hover:bg-accent transition-colors text-sm"
+            >
+              Upload data
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 overflow-auto bg-muted/30">
@@ -68,11 +434,21 @@ export function Dashboard() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl mb-2">Cash Flow Analysis</h1>
-            <p className="text-muted-foreground">Riverside Coffee Roasters — Last 12 months</p>
+            <p className="text-muted-foreground">{businessSubtitle}</p>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleRunAnalysis}
+              disabled={isRunningAnalysis}
+              className="bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed transition-opacity flex items-center gap-2 text-sm"
+            >
+              <Activity className="w-4 h-4" />
+              {isRunningAnalysis ? 'Running...' : 'Run analysis'}
+            </button>
             <Link
               to="/report"
+              state={{ result: analysisResult, payload: analysisPayload }}
               className="bg-card border border-border px-4 py-2 rounded-lg hover:bg-accent transition-colors flex items-center gap-2 text-sm"
             >
               <FileText className="w-4 h-4" />
@@ -92,24 +468,116 @@ export function Dashboard() {
               <div className="flex items-center gap-2 mb-2">
                 <CheckCircle2 className="w-5 h-5 text-primary" />
                 <span className="text-sm">Risk Assessment</span>
+                {analysis?.analyst_review_required && (
+                  <Badge variant="destructive">Analyst review required</Badge>
+                )}
               </div>
-              <h2 className="text-4xl mb-2">{riskScore}/100</h2>
-              <p className="text-muted-foreground mb-4">Low-to-moderate risk profile</p>
+              <h2 className="text-4xl mb-2">{displayedRiskScore}/100</h2>
+              <p className={`mb-4 ${getRiskClassName(displayedRiskLevel)}`}>{displayedRiskLevel} risk profile</p>
               <div className="bg-background/80 backdrop-blur rounded-lg p-4 max-w-2xl">
                 <p className="text-sm leading-relaxed">
-                  <strong className="text-foreground">AI Analysis:</strong> Riverside Coffee Roasters shows strong upward cash flow momentum with consistent revenue growth over the past 6 months. Average monthly balance has increased 160% since July. Only 1 overdraft incident detected in 12 months. Debt-to-revenue ratio of 8% is well within safe parameters. The business demonstrates seasonal strength in Q4 with reliable recovery patterns.
+                  <strong className="text-foreground">AI Analysis:</strong> {displayedExplanation}
                 </p>
               </div>
+              {analysis && (
+                <div className="flex flex-wrap items-center gap-3 mt-4">
+                  <Button
+                    type="button"
+                    onClick={() => setStatus('approved')}
+                    className="bg-green-600 text-white hover:bg-green-700"
+                  >
+                    Mark Approved
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    onClick={() => setStatus('needs_info')}
+                  >
+                    Request Info
+                  </Button>
+                  {status && (
+                    <span className="text-sm text-muted-foreground">
+                      Status: {status === 'approved' ? 'Approved' : 'Needs more information'}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             <div className="bg-background rounded-lg p-6 text-center min-w-[200px]">
               <div className="text-sm text-muted-foreground mb-2">Recommended Loan Amount</div>
-              <div className="text-3xl mb-1">${(recommendedLoan / 1000).toFixed(0)}K</div>
+              <div className="text-3xl mb-1">${(displayedLoanAmount / 1000).toFixed(0)}K</div>
               <div className="text-xs text-muted-foreground">Based on cash flow capacity</div>
             </div>
           </div>
         </div>
 
+        {(analysisResult || analysisError) && (
+          <div className="bg-card border border-border rounded-lg p-6 mb-6">
+            <h3 className="mb-3">Live API Result</h3>
+            {analysisError ? (
+              <p className="text-sm text-red-600">{analysisError}</p>
+            ) : analysisResult ? (
+              <div className="grid md:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <div className="text-muted-foreground mb-1">Status</div>
+                  <div className="font-medium">{analysisResult.status}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground mb-1">Business</div>
+                  <div className="font-medium">{analysisResult.business.name}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground mb-1">Collection Window</div>
+                  <div className="font-medium">{analysisResult.analysis.recommended_collection_window}</div>
+                </div>
+                <div>
+                  <div className="text-muted-foreground mb-1">Analyst Review</div>
+                  <div className="font-medium">{analysisResult.analysis.analyst_review_required ? 'Required' : 'Not required'}</div>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
+
         {/* Key Metrics Grid */}
+        {analysis ? (
+          <div className="grid md:grid-cols-4 gap-4 mb-6">
+            <StatCard
+              label="Avg Monthly Deposits"
+              value={formatCurrency(analysis.metrics.average_monthly_deposits)}
+            />
+            <StatCard
+              label="Avg Balance"
+              value={formatCurrency(analysis.metrics.average_balance)}
+            />
+            <StatCard
+              label="Risk Level"
+              value={analysis.risk_level}
+              className={getRiskClassName(analysis.risk_level)}
+            />
+            <StatCard
+              label="Avg Monthly Outflows"
+              value={formatCurrency(analysis.metrics.average_monthly_outflows)}
+            />
+            <StatCard
+              label="Net Monthly Cash Flow"
+              value={formatCurrency(analysis.metrics.monthly_net_cash_flow)}
+            />
+            <StatCard
+              label="Cash Flow Volatility"
+              value={analysis.metrics.cash_flow_volatility}
+              className={getRiskClassName(analysis.metrics.cash_flow_volatility)}
+            />
+            <StatCard
+              label="Overdraft Count"
+              value={analysis.metrics.overdraft_count.toLocaleString()}
+            />
+            <StatCard
+              label="Weeks of Liquidity"
+              value={analysis.metrics.estimated_weeks_of_liquidity.toLocaleString()}
+            />
+          </div>
+        ) : (
         <div className="grid md:grid-cols-4 gap-4 mb-6">
           <div className="bg-card border border-border rounded-lg p-6">
             <div className="flex items-center justify-between mb-2">
@@ -167,13 +635,32 @@ export function Dashboard() {
             </div>
           </div>
         </div>
+        )}
+
+        {analysis && (
+          <section className="bg-card border border-border rounded-lg p-6 mb-6">
+            <h3 className="mb-3">AI Risk Summary</h3>
+            <p className="text-sm text-muted-foreground leading-relaxed">{aiSummary.summary}</p>
+
+            {aiSummary.topDrivers.length > 0 && (
+              <>
+                <h4 className="mt-4 mb-2">Top Drivers</h4>
+                <ul className="list-disc ml-6 text-sm text-muted-foreground space-y-1">
+                  {aiSummary.topDrivers.map((driver) => (
+                    <li key={driver}>{driver}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </section>
+        )}
 
         {/* Charts */}
         <div className="grid md:grid-cols-2 gap-6 mb-6">
           <div className="bg-card border border-border rounded-lg p-6">
             <h3 className="mb-4">Monthly Revenue & Expenses</h3>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={monthlyRevenue}>
+              <BarChart data={chartMonthlyRevenue}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                 <XAxis dataKey="month" stroke="var(--color-muted-foreground)" />
                 <YAxis stroke="var(--color-muted-foreground)" />
@@ -184,7 +671,8 @@ export function Dashboard() {
                     borderRadius: '8px',
                   }}
                   formatter={(value: number, name: string) => {
-                    return [Math.abs(value).toLocaleString(), name === 'expenses' ? 'Expenses' : 'Revenue'];
+                    const seriesName = name.toLowerCase() === 'expenses' ? 'Expenses' : 'Revenue';
+                    return [Math.abs(value).toLocaleString(), seriesName];
                   }}
                 />
                 <Legend />
@@ -197,7 +685,7 @@ export function Dashboard() {
           <div className="bg-card border border-border rounded-lg p-6">
             <h3 className="mb-4">Account Balance Trend</h3>
             <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={balanceData}>
+              <LineChart data={chartBalanceData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
                 <XAxis dataKey="month" stroke="var(--color-muted-foreground)" />
                 <YAxis stroke="var(--color-muted-foreground)" />
@@ -222,25 +710,15 @@ export function Dashboard() {
               Recurring Expenses
             </h3>
             <div className="space-y-3">
-              <div className="flex items-center justify-between py-2 border-b border-border">
-                <span className="text-sm">Payroll</span>
-                <span className="font-medium">$28,500/mo</span>
-              </div>
-              <div className="flex items-center justify-between py-2 border-b border-border">
-                <span className="text-sm">Rent & Utilities</span>
-                <span className="font-medium">$4,200/mo</span>
-              </div>
-              <div className="flex items-center justify-between py-2 border-b border-border">
-                <span className="text-sm">Software & Subscriptions</span>
-                <span className="font-medium">$1,800/mo</span>
-              </div>
-              <div className="flex items-center justify-between py-2">
-                <span className="text-sm">Insurance</span>
-                <span className="font-medium">$950/mo</span>
-              </div>
+              {recurringExpenseRows.map((row) => (
+                <div key={row.label} className="flex items-center justify-between py-2 border-b border-border last:border-b-0">
+                  <span className="text-sm">{row.label}</span>
+                  <span className="font-medium">{formatCurrency(row.amount)}/mo</span>
+                </div>
+              ))}
               <div className="flex items-center justify-between pt-3 border-t-2 border-border">
                 <span className="font-medium">Total Fixed Costs</span>
-                <span className="font-medium">$35,450/mo</span>
+                <span className="font-medium">{formatCurrency(totalFixedCosts)}/mo</span>
               </div>
             </div>
           </div>
@@ -251,27 +729,31 @@ export function Dashboard() {
               Debt Obligations
             </h3>
             <div className="space-y-3">
-              <div className="flex items-center justify-between py-2 border-b border-border">
-                <span className="text-sm">Business Line of Credit</span>
-                <span className="font-medium">$850/mo</span>
-              </div>
-              <div className="flex items-center justify-between py-2 border-b border-border">
-                <span className="text-sm">Equipment Loan</span>
-                <span className="font-medium">$1,200/mo</span>
-              </div>
-              <div className="flex items-center justify-between py-2 border-b border-border">
-                <span className="text-sm">Outstanding Balance</span>
-                <span className="font-medium">$42,000</span>
-              </div>
+              {debtRows.length > 0 ? (
+                debtRows.map((row) => (
+                  <div key={row.label} className="flex items-center justify-between py-2 border-b border-border">
+                    <span className="text-sm">{row.label}</span>
+                    <span className="font-medium">{formatCurrency(row.amount)}/mo</span>
+                  </div>
+                ))
+              ) : (
+                <div className="py-2 border-b border-border text-sm text-muted-foreground">
+                  No debt-payment transactions detected
+                </div>
+              )}
               <div className="flex items-center justify-between pt-3 border-t-2 border-border">
-                <span className="font-medium">Debt-to-Revenue Ratio</span>
-                <span className="font-medium text-green-600">8.2%</span>
+                <span className="font-medium">Debt-to-Deposit Ratio</span>
+                <span className={`font-medium ${analysis && analysis.metrics.debt_to_deposit_ratio > 0.2 ? 'text-red-600' : 'text-green-600'}`}>
+                  {analysis ? `${Math.round(analysis.metrics.debt_to_deposit_ratio * 100)}%` : '8.2%'}
+                </span>
               </div>
             </div>
-            <div className="mt-4 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900 rounded-lg p-3">
-              <p className="text-sm text-green-900 dark:text-green-100">
+            <div className={`mt-4 rounded-lg p-3 ${analysis && analysis.metrics.debt_to_deposit_ratio > 0.2 ? 'bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900' : 'bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-900'}`}>
+              <p className={`text-sm ${analysis && analysis.metrics.debt_to_deposit_ratio > 0.2 ? 'text-red-900 dark:text-red-100' : 'text-green-900 dark:text-green-100'}`}>
                 <CheckCircle2 className="w-4 h-4 inline mr-1" />
-                Debt levels are healthy and manageable
+                {analysis && analysis.metrics.debt_to_deposit_ratio > 0.2
+                  ? 'Debt payments may require analyst review'
+                  : 'Debt levels are healthy and manageable'}
               </p>
             </div>
           </div>
