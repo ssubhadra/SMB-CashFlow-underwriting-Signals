@@ -66,15 +66,15 @@ Content-Type: application/json
 
 
 Transaction data (CSV/JSON)
-  ↓
+-->
 Cash-flow metrics engine (Metrics important such as Deposits, outflows, OD counts, balance etc)
-  ↓
+ -->
 Rules-based risk signals (Math logic grabbed from simple google search)
-  ↓
+-->
 Plain-English explanation layer (Small Langchain prompt template)
-  ↓
+-->
 Dashboard / report / API response
-  ↓
+-->
 Human analyst review
 
 ## Important disclaimer
