@@ -36,10 +36,12 @@ function CodeBlock({ code }: { code: string }) {
 }
 
 export function ApiDocs() {
-  const sampleRequest = `POST /api/underwrite
-Content-Type: application/json
+  const requestEndpoint = `POST https://smb-credit-signal-with-j90ab2ttt-subha-ss-projects-04b497d2.vercel.app/api/underwrite`;
 
-{
+  const requestHeaders = `Key: Content-Type
+Value: application/json`;
+
+  const sampleRequest = `{
   "business_name": "Riverside Coffee Roasters",
   "industry": "Restaurant",
   "opening_balance": 15000,
@@ -158,6 +160,33 @@ Content-Type: application/json
           <p className="text-muted-foreground mb-6">
             Submit transaction data for a sandbox underwriting-support analysis. The endpoint calculates deterministic cash-flow metrics first, then returns a plain-English explanation based on those metrics.
           </p>
+
+          <h3 className="text-lg mb-3">How to Test</h3>
+          <div className="bg-card border border-border rounded-lg p-6 mb-6">
+            <ol className="space-y-4 text-sm text-muted-foreground">
+              <li>
+                <span className="text-foreground">1. Open an API testing tool</span> such as Postman, Insomnia, Thunder Client, or any tool that can send HTTP requests.
+              </li>
+              <li>
+                <span className="text-foreground">2. Create a new request</span> and set the method and URL to:
+                <div className="mt-3">
+                  <CodeBlock code={requestEndpoint} />
+                </div>
+              </li>
+              <li>
+                <span className="text-foreground">3. Under Headers, add:</span>
+                <div className="mt-3">
+                  <CodeBlock code={requestHeaders} />
+                </div>
+              </li>
+              <li>
+                <span className="text-foreground">4. Under Body, choose JSON</span>, then copy and paste the request body below.
+              </li>
+              <li>
+                <span className="text-foreground">5. Hit Send.</span> The response should return the underwriting signal, cash-flow metrics, recommended loan amount, collection window, and explanation.
+              </li>
+            </ol>
+          </div>
 
           <h3 className="text-lg mb-3">Request Body</h3>
           <div className="mb-6">
